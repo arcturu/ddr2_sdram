@@ -36,10 +36,14 @@ architecture behaviour of DDR2_SDRAM is
     constant tWL : integer := 2;
     constant tRL : integer := 3;
 
---    type memtype is array (15 downto 0) of std_logic_vector (63 downto 0);
---    signal memory : memtype;
+    type t_mem is array (16383 downto 0) of std_logic_vector (63 downto 0);
+    signal mem : t_mem;
     signal st : std_logic_vector (3 downto 0) := "0000";
     signal command : std_logic_vector (3 downto 0);
+    type t_addr is array (2 downto 0) of std_logic_vector (13 downto 0);
+    signal addr : t_addr;
+    type t_e is array (2 downto 0) of std_logic;
+    signal we : t_e;
 begin
     command(3) <= XCS(1);
     command(3) <= XCS(0);
@@ -47,36 +51,36 @@ begin
     command(1) <= XCAS;
     command(0) <= XWE;
 
+    addr(0) <= A;
     process (CK(0))
     begin
         if rising_edge(CK(0)) then
+            addr(2) <= addr(1); addr(1) <= addr(0);
+            we(2) <= we(1); we(1) <= we(0);
             case command is
                 when WRITE =>
+                    we(0) <= '1';
                 when READ =>
-                    wait for (tRL - 1) * cycle;
-                    DQS <= (others => '0');
-                    XDQS <= (others => '1');
-                    wait for cycle / 2;
-                    DQS <= (others => '1');
-                    XDQS <= (others => '0');
-                    DQ <= x"0123456789abcdef";
-                    wait for cycle / 2;
-                    DQS <= (others => '0');
-                    XDQS <= (others => '1');
-                    DQ <= x"0123456789abcdee";
-                    wait for cycle / 2;
-                    DQS <= (others => '1');
-                    XDQS <= (others => '0');
-                    DQ <= x"0123456789abcded";
-                    wait for cycle / 2;
-                    DQS <= (others => '0');
-                    XDQS <= (others => '1');
-                    DQ <= x"0123456789abcdec";
-                when others =>
-                    DQS <= (others => 'Z');
-                    XDQS <= (others => 'Z');
+                    we(0) <= '0';
             end case;
         end if;
     end process;
 
+    process (CK(0))
+    begin
+        if rising_edge(CK(0)) then
+            if we(2) = '1' then
+                writing <= '1';
+            else
+                writing <= '0';
+            end if;
+        end if;
+    end process;
+
+    process (DQS(0))
+    begin
+        if writing = '1' and rising_edge(DQS(0)) or falling_edge(DQS(0)) then
+            mem(to_integer(unsigned(addr(2)))) <= DQ;
+        end if;
+    end process;
 end behaviour;

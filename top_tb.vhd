@@ -61,27 +61,27 @@ ARCHITECTURE behavior OF top_tb IS
         );
     END COMPONENT;
 
-    component DDR2_SDRAM is
-        generic (
-            cycle : time
-        );
-        port (
-            DQ : inout std_logic_vector (63 downto 0);
-            A : in std_logic_vector (13 downto 0);
-            DQS : inout std_logic_vector (7 downto 0);
-            XDQS : inout std_logic_vector (7 downto 0);
-            DM : in std_logic_vector (7 downto 0);
-            XCS : in std_logic_vector (1 downto 0);
-            BA : in std_logic_vector (2 downto 0);
-            XRAS : in std_logic;
-            XCAS : in std_logic;
-            XWE : in std_logic;
-            ODT : in std_logic_vector (1 downto 0);
-            CKE : in std_logic_vector (1 downto 0);
-            CK : in std_logic_vector (1 downto 0);
-            XCK : in std_logic_vector (1 downto 0)
-        );
-    END COMPONENT;
+--    component DDR2_SDRAM is
+--        generic (
+--            cycle : time
+--        );
+--        port (
+--            DQ : inout std_logic_vector (63 downto 0);
+--            A : in std_logic_vector (13 downto 0);
+--            DQS : inout std_logic_vector (7 downto 0);
+--            XDQS : inout std_logic_vector (7 downto 0);
+--            DM : in std_logic_vector (7 downto 0);
+--            XCS : in std_logic_vector (1 downto 0);
+--            BA : in std_logic_vector (2 downto 0);
+--            XRAS : in std_logic;
+--            XCAS : in std_logic;
+--            XWE : in std_logic;
+--            ODT : in std_logic_vector (1 downto 0);
+--            CKE : in std_logic_vector (1 downto 0);
+--            CK : in std_logic_vector (1 downto 0);
+--            XCK : in std_logic_vector (1 downto 0)
+--        );
+--    END COMPONENT;
 
     
 
@@ -135,24 +135,24 @@ BEGIN
           XCK => XCK
         );
 
-   dram : DDR2_SDRAM GENERIC MAP (
-          cycle => mclk1_period / 4
-   ) PORT MAP (
-          DQ => DQ,
-          A => A,
-          DQS => DQS,
-          XDQS => XDQS,
-          DM => DM,
-          XCS => XCS,
-          BA => BA,
-          XRAS => XRAS,
-          XCAS => XCAS,
-          XWE => XWE,
-          ODT => ODT,
-          CKE => CKE,
-          CK => CK,
-          XCK => XCK
-  );
+--   dram : DDR2_SDRAM GENERIC MAP (
+--          cycle => mclk1_period / 4
+--   ) PORT MAP (
+--          DQ => DQ,
+--          A => A,
+--          DQS => DQS,
+--          XDQS => XDQS,
+--          DM => DM,
+--          XCS => XCS,
+--          BA => BA,
+--          XRAS => XRAS,
+--          XCAS => XCAS,
+--          XWE => XWE,
+--          ODT => ODT,
+--          CKE => CKE,
+--          CK => CK,
+--          XCK => XCK
+--  );
 
    -- Clock process definitions
    mclk1_process :process
