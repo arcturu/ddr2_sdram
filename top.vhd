@@ -73,10 +73,10 @@ architecture behaviour of TOP is
             addr : in std_logic_vector (13 downto 0);
             bank_addr : in std_logic_vector (2 downto 0);
             cmd : in std_logic_vector (3 downto 0);
-            wdata : in std_logic_vector (63 downto 0);
             ready : out std_logic;
             valid : out std_logic;
             busy : out std_logic;
+            din : in std_logic_vector (63 downto 0);
             dout : out std_logic_vector (63 downto 0);
 
             DQ : inout std_logic_vector (63 downto 0);
@@ -114,6 +114,10 @@ architecture behaviour of TOP is
 --            vout : out std_logic
 --        );
 --    end component;
+    signal NOP   : std_logic_vector (3 downto 0) := "0000";
+    signal WRITE : std_logic_vector (3 downto 0) := "0001";
+    signal READ  : std_logic_vector (3 downto 0) := "0010";
+    signal ACT   : std_logic_vector (3 downto 0) := "0011";
     signal clk : std_logic;
     signal clkh : std_logic;
     signal sender_go : std_logic := '0';
@@ -125,14 +129,14 @@ architecture behaviour of TOP is
     signal dram_busy : std_logic;
     signal dram_addr : std_logic_vector (13 downto 0);
     signal dram_ba : std_logic_vector (2 downto 0);
-    signal dram_wd : std_logic_vector (63 downto 0);
+    signal dram_in : std_logic_vector (63 downto 0);
     signal send_stop : std_logic := '0';
 --    signal reader_data : std_logic_vector (7 downto 0);
 --    signal reader_data32 : std_logic_vector (31 downto 0);
 --    signal reader_valid : std_logic;
 --    signal reader_valid32 : std_logic;
 --    signal reader_valid322 : std_logic;
-    signal counter2 : std_logic_vector (3 downto 0) := x"0";
+    signal st : std_logic_vector (3 downto 0) := x"0";
     signal dram_out : std_logic_vector (63 downto 0);
 begin
     clock_quadruple : CLK4 port map (
@@ -147,8 +151,8 @@ begin
     );
 
     dram_ctl : DRAM_CONTROLLER port map (
-        clk, clkh, dram_addr, dram_ba, dram_command, dram_wd,
-        dram_ready, dram_valid, dram_busy, dram_out,
+        clk, clkh, dram_addr, dram_ba, dram_command,
+        dram_ready, dram_valid, dram_busy, dram_in, dram_out,
         DQ, A, DQS, XDQS, DM, XCS, BA, XRAS, XCAS, XWE, ODT, CKE, CK, XCK
     );
 
@@ -171,30 +175,36 @@ begin
             else
                 sender_go <= '0';
             end if;
---             if dram_ready = '1' and dram_busy = '0' then
---                 if unsigned(counter2) <= x"2" then
---                     counter2 <= std_logic_vector(unsigned(counter2) + 1);
---                 end if;
--- 
---                 case counter2 is
---                     when x"0" =>
---                         dram_command <= x"1";
---                         dram_addr <= "00000000000000";
---                         dram_ba <= "000";
---                         dram_wd <= x"deadcafebeefcafe";
---                     when x"1" =>
--- --                        dram_command <= x"1";
--- --                        dram_addr <= "00000000000100";
--- --                        dram_ba <= "000";
---                         dram_wd <= x"0123456789abcdef";
---                     when x"2" =>
---                         dram_command <= x"2";
---                         dram_addr <= "00000000000000";
---                         dram_ba <= "000";
---                     when others =>
---                         dram_command <= x"f";
---                 end case;
---             end if;
+            if dram_ready = '1' and dram_busy = '0' then
+                case st is
+                    when x"0" =>
+                        dram_command <= ACT;
+                        dram_addr <= "00000000000000";
+                        dram_ba <= "000";
+                        st <= x"1";
+                    when x"1" =>
+                        dram_command <= WRITE;
+                        dram_addr <= "00000000000000";
+                        dram_ba <= "000";
+                        dram_in <= x"deadcafebeefcafe";
+                        st <= x"2";
+                    when x"2" =>
+                        dram_command <= WRITE;
+                        dram_addr <= "00000000000100";
+                        dram_ba <= "000";
+                        dram_in <= x"0123456789abcdef";
+                        st <= x"3";
+                    when x"3" =>
+                        dram_command <= READ;
+                        dram_addr <= "00000000000100";
+                        dram_ba <= "000";
+                        st <= x"4";
+                    when others =>
+                        dram_command <= NOP;
+                end case;
+            else
+                dram_command <= NOP;
+            end if;
 
 --            if dram_ready = '1' and sender_busy = '0' then
 --                if reader_valid32 = '1' and reader_valid322 = '0' then

@@ -9,10 +9,10 @@ entity DRAM_CONTROLLER is
         addr : in std_logic_vector (13 downto 0);
         bank_addr : in std_logic_vector (2 downto 0);
         cmd : in std_logic_vector (3 downto 0);
-        wdata : in std_logic_vector (63 downto 0);
         ready : out std_logic;
         valid : out std_logic;
         busy : out std_logic;
+        din : in std_logic_vector (63 downto 0);
         dout : out std_logic_vector (63 downto 0);
 
         DQ : inout std_logic_vector (63 downto 0);
@@ -40,6 +40,9 @@ architecture struct of DRAM_CONTROLLER is
     constant ACT  : std_logic_vector (3 downto 0) := "0011";
     constant READ : std_logic_vector (3 downto 0) := "0101";
     constant WRITE: std_logic_vector (3 downto 0) := "0100";
+    constant CTR_WRITE : std_logic_vector (3 downto 0) := "0001";
+    constant CTR_READ  : std_logic_vector (3 downto 0) := "0010";
+    constant CTR_ACT   : std_logic_vector (3 downto 0) := "0011";
     signal st : std_logic_vector (4 downto 0) := "00000";
     signal dram_ready : std_logic := '0';
     signal dram_init_waiting : std_logic := '0';
@@ -50,14 +53,12 @@ architecture struct of DRAM_CONTROLLER is
     signal dqsb : std_logic := '0';
     signal dqs_go : std_logic := '0';
     signal dqs_zero : std_logic := '0';
-    signal dq_z : std_logic := '0';
-    signal hoge : std_logic_vector (63 downto 0) := x"0123456789abcdef";
+    signal dq_z : std_logic := '1';
+    signal in_buf : std_logic_vector (63 downto 0);
     signal counter2 : std_logic_vector (3 downto 0) := "0000";
     signal dqs_counter : std_logic_vector (15 downto 0) := x"0000";
-    signal doutb : std_logic_vector (63 downto 0);
---    signal dqsf : std_logic_vector (7 downto 0) := (others => '0');
---    signal dqsf2 : std_logic_vector (7 downto 0) := (others => '0');
---    signal v : std_logic_vector (7 downto 0) := (others => '0');
+    type t_dqbuf is array (3 downto 0) of std_logic_vector (63 downto 0);
+    signal dqbuf : t_dqbuf := (others => (others => '0'));
 begin
 
     ready <= dram_ready;
@@ -96,65 +97,26 @@ begin
     XDQS(6) <= not dqsb when dqs_go = '1' or dqs_zero = '1' else 'Z';
     XDQS(7) <= not dqsb when dqs_go = '1' or dqs_zero = '1' else 'Z';
 
-    DQ <= hoge when dq_z = '0' else (others => 'Z');
+    DQ <= in_buf when dq_z = '0' else (others => 'Z');
 
-    dout <= doutb;
+    -- FIXME just for debugging
+    dout(15 downto 0) <= dqbuf(0)(15 downto 0);
+    dout(31 downto 16) <= dqbuf(1)(15 downto 0);
+    dout(47 downto 32) <= dqbuf(2)(15 downto 0);
+--    dout(63 downto 48) <= dqbuf(3)(15 downto 0);
+    dout(63 downto 48) <= dqs_counter;
+
     process (clkh)
     begin
         if rising_edge(clkh) then
---            dqsf2 <= dqsf;
---            if read_go = '1' then
---                if dqsf(0) /= dqsf2(0) then
---                    doutb(7 downto 0) <= DQ(7 downto 0);
---                    v(0) <= '1';
---                end if;
---                if dqsf(1) /= dqsf2(1) then
---                    doutb(15 downto 8) <= DQ(15 downto 8);
---                    v(1) <= '1';
---                end if;
---                if dqsf(2) /= dqsf2(2) then
---                    doutb(23 downto 16) <= DQ(23 downto 16);
---                    v(2) <= '1';
---                end if;
---                if dqsf(3) /= dqsf2(3) then
---                    doutb(31 downto 24) <= DQ(31 downto 24);
---                    v(3) <= '1';
---                end if;
---                if dqsf(4) /= dqsf2(4) then
---                    doutb(39 downto 32) <= DQ(39 downto 32);
---                    v(4) <= '1';
---                end if;
---                if dqsf(5) /= dqsf2(5) then
---                    doutb(47 downto 40) <= DQ(47 downto 40);
---                    v(5) <= '1';
---                end if;
---                if dqsf(6) /= dqsf2(6) then
---                    doutb(55 downto 48) <= DQ(55 downto 48);
---                    v(6) <= '1';
---                end if;
---                if dqsf(7) /= dqsf2(7) then
---                    doutb(63 downto 56) <= DQ(63 downto 56);
---                    v(7) <= '1';
---                end if;
---                if v = "11111111" then
---                    valid <= '1';
---                else
---                    valid <= '0';
---                end if;
---            end if;
-
---            doutb <= DQ;
---            doutb (7 downto 0) <= DQ (7 downto 0);
---            doutb (15 downto 8) <= doutb (7 downto 0);
---            doutb (23 downto 16) <= doutb (15 downto 8);
---            doutb (31 downto 24) <= doutb (23 downto 16);
---            doutb (63 downto 16) <= (others => '0');
-            doutb (63 downto 8) <= DQ (63 downto 8);
-            doutb (7 downto 0) <= dqs_counter (7 downto 0);
+            dqbuf(3) <= DQ;
+            dqbuf(2) <= dqbuf(3);
+            dqbuf(1) <= dqbuf(2);
+            dqbuf(0) <= dqbuf(1);
         end if;
     end process;
 
-    process (clk)
+    process (clk) -- to make DQS for writing
     begin
         if falling_edge(clk) then
             if write_go = '1' then
@@ -165,7 +127,7 @@ begin
         end if;
     end process;
 
-    process (clk)
+    process (clk) -- to make DQS's initial falling down
     begin
         if rising_edge(clk) then
             if write_go = '1' then
@@ -176,81 +138,14 @@ begin
         end if;
     end process;
 
---    process (clk)
---    begin
---        if rising_edge(clk) then
---            if read_go = '1' then
---                valid <= '1';
---            else
---                valid <= '0';
---            end if;
---        end if;
---    end process;
-
     process (DQS(0))
     begin
-        if falling_edge(DQS(0)) then
+        if rising_edge(DQS(0)) then
             if read_go = '1' then
                 dqs_counter <= std_logic_vector(unsigned(dqs_counter) + 1);
             end if;
         end if;
     end process;
-
---    process (DQS(0))
---    begin
---        if rising_edge(DQS(0)) then
---            dqsf(0) <= not dqsf(0);
---        end if;
---    end process;
---
---    process (DQS(1))
---    begin
---        if rising_edge(DQS(1)) then
---            dqsf(1) <= not dqsf(1);
---        end if;
---    end process;
---
---    process (DQS(2))
---    begin
---        if rising_edge(DQS(2)) then
---            dqsf(2) <= not dqsf(2);
---        end if;
---    end process;
---
---    process (DQS(3))
---    begin
---        if rising_edge(DQS(3)) then
---            dqsf(3) <= not dqsf(3);
---        end if;
---    end process;
---
---    process (DQS(4))
---    begin
---        if rising_edge(DQS(4)) then
---            dqsf(4) <= not dqsf(4);
---        end if;
---    end process;
---
---    process (DQS(5))
---    begin
---        if rising_edge(DQS(5)) then
---            dqsf(5) <= not dqsf(5);
---        end if;
---    end process;
---
---    process (DQS(6))
---    begin
---        if rising_edge(DQS(6)) then
---            dqsf(6) <= not dqsf(6);
---        end if;
---    end process;
---
---    process (DQS(7))
---    begin
---        if rising_edge(DQS(7)) then
---            dqsf(7) <= not dqsf(7);
---        end if;
---    end process;
 
     dram_init : process (clk)
     begin
@@ -265,6 +160,7 @@ begin
             else
                 case st is
                     when "00000" => -- initial state
+                        dram_ready <= '0';
                         valid <= '0';
                         read_go <= '0';
                         CKE <= "00";
@@ -337,109 +233,76 @@ begin
                         counter <= x"00ff";
                         dram_init_waiting <= '1';
                     when "01101" => -- ready
---                        dram_ready <= '1';
---                        busy <= '0';
-                        command <= ACT;
-                        BA <= "000";
-                        A <= (others => '0');
-                        counter <= x"0010";
-                        dram_init_waiting <= '1';
-                    when "01110" =>
-                        command <= WRITE;
-                        BA <= "000";
-                        hoge <= x"0f0f0f0f0f0f0f0f";
-                        A <= "00000000000010";
-                        counter <= x"0001"; -- CAS latency - 1?
-                        dram_init_waiting <= '1';
-                    when "01111" =>
                         command <= NOP;
+                        dram_ready <= '1';
+                        case cmd is
+                            when CTR_WRITE =>
+                                st <= "01110"; -- DRAM_WRITE;
+                                busy <= '1';
+                            when CTR_READ =>
+                                st <= "10011"; -- DRAM_READ;
+                                busy <= '1';
+                            when CTR_ACT =>
+                                st <= "10101";
+                                busy <= '1';
+                            when others =>
+                                busy <= '0';
+                        end case;
+                    when "01110" => -- DRAM_WRITE =>
+                        command <= WRITE;
+                        BA <= bank_addr;
+                        A <= addr;
+                        in_buf <= din;
+                        counter <= x"0001";
+                        dram_init_waiting <= '1';
+                    when "01111" => -- start DQS
+                        command <= NOP;
+                        dq_z <= '0';
                         write_go <= '1';
                         counter <= x"0003";
                         dram_init_waiting <= '1';
-                    when "10000" =>
-                        command <= NOP;
-                        write_go <= '0';
-                        counter <= x"000f";
-                        dram_init_waiting <= '1';
-                    when "10001" =>
-                        command <= WRITE;
-                        hoge <= x"deadbeefcafecafe";
-                        A <= "00000000000000";
-                        counter <= x"0001"; -- CAS latency - 1?
-                        dram_init_waiting <= '1';
-                    when "10010" =>
-                        command <= NOP;
-                        write_go <= '1';
-                        counter <= x"0003";
-                        dram_init_waiting <= '1';
-                    when "10011" =>
-                        command <= NOP;
-                        write_go <= '0';
-                        counter <= x"000f";
-                        dram_init_waiting <= '1';
-                    when "10100" =>
-                        command <= WRITE;
-                        hoge <= x"4242424242424242";
-                        A <= "00000000000100";
-                        counter <= x"0001"; -- CAS latency - 1?
-                        dram_init_waiting <= '1';
-                    when "10101" =>
-                        command <= NOP;
-                        write_go <= '1';
-                        counter <= x"0003";
-                        dram_init_waiting <= '1';
-                    when "10110" =>
+                    when "10000" => -- end DQS
                         command <= NOP;
                         write_go <= '0';
                         counter <= x"0000";
                         dram_init_waiting <= '1';
-                    when "10111" =>
-                        hoge <= (others => '0');
+                    when "10001" => -- flush buffer
+                        command <= NOP;
+                        in_buf <= (others => '0');
+                        counter <= x"0004"; -- TODO: wait for tWR ??
+                        dram_init_waiting <= '1';
+                    when "10010" =>
+                        command <= NOP;
+                        dq_z <= '1';
+                        busy <= '0';
+                        st <= "01101"; -- ready
+                    when "10011" => -- DRAM_READ =>
+                        command <= READ;
+                        BA <= bank_addr;
+                        A <= addr;
+                        dq_z <= '1';
+                        read_go <= '1';
                         counter <= x"000f";
                         dram_init_waiting <= '1';
-                    when "11000" =>
-                        dq_z <= '1';
-                        command <= READ; -- try changing this to NOP
-                        A <= "00000000000100";
-                        counter <= x"00ff"; -- CAS latency?
-                        dram_init_waiting <= '1';
-                        read_go <= '1';
-                    when "11001" =>
-                        valid <= '1';
+                    when "10100" =>
                         command <= NOP;
-                        st <= "11001";
+                        valid <= '1';
+                        st <= "01101";
+                        busy <= '0';
+                    when "10101" => -- DRAM_ACT =>
+                        command <= ACT;
+                        BA <= bank_addr;
+                        A <= addr;
+                        counter <= x"000f";
+                        dram_init_waiting <= '1';
+                    when "10110" =>
+                        st <= "01101";
+                        busy <= '0';
                     when others => -- ??
                         command <= NOP;
                         st <= "00000";
                 end case;
             end if;
-
---            if dram_ready = '1' then
---                if unsigned(rw_counter) < x"30" then
---                    rw_counter <= std_logic_vector(unsigned(rw_counter) + 1);
---                end if;
---                case rw_counter is
---                    when x"00" =>
---                        command <= ACT;
---                        BA <= "000";
---                        A <= (others => '0');
---                    when x"10" =>
---                        command <= WRITE;
---                        BA <= "000";
---                        A <= (others => '0');
---                    when x"13" =>
---                        write_go <= '1';
---                    when x"16" =>
---                        write_go <= '0';
---                        dq_z <= '1';
---                    when x"20" =>
---                        command <= READ;
---                        BA <= "000";
---                        A <= "00000000000000";
---                    when others =>
---                        command <= NOP;
---                end case;
---            end if;
         end if;
     end process;
 end struct;
