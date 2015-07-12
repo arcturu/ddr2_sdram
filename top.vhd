@@ -118,6 +118,7 @@ architecture behaviour of TOP is
     signal WRITE : std_logic_vector (3 downto 0) := "0001";
     signal READ  : std_logic_vector (3 downto 0) := "0010";
     signal ACT   : std_logic_vector (3 downto 0) := "0011";
+    signal REF   : std_logic_vector (3 downto 0) := "0100";
     signal clk : std_logic;
     signal clkh : std_logic;
     signal sender_go : std_logic := '0';
@@ -138,6 +139,8 @@ architecture behaviour of TOP is
 --    signal reader_valid322 : std_logic;
     signal st : std_logic_vector (3 downto 0) := x"0";
     signal dram_out : std_logic_vector (63 downto 0);
+    signal waiting : std_logic := '0';
+    signal wait_counter : std_logic_vector (19 downto 0) := x"00000";
 begin
     clock_quadruple : CLK4 port map (
         CLKIN_IN => MCLK1,
@@ -175,35 +178,50 @@ begin
             else
                 sender_go <= '0';
             end if;
-            if dram_ready = '1' and dram_busy = '0' then
-                case st is
-                    when x"0" =>
-                        dram_command <= ACT;
-                        dram_addr <= "00000000000000";
-                        dram_ba <= "000";
-                        st <= x"1";
-                    when x"1" =>
-                        dram_command <= WRITE;
-                        dram_addr <= "00000000000000";
-                        dram_ba <= "000";
-                        dram_in <= x"deadcafebeefcafe";
-                        st <= x"2";
-                    when x"2" =>
-                        dram_command <= WRITE;
-                        dram_addr <= "00000000000100";
-                        dram_ba <= "000";
-                        dram_in <= x"0123456789abcdef";
-                        st <= x"3";
-                    when x"3" =>
-                        dram_command <= READ;
-                        dram_addr <= "00000000000100";
-                        dram_ba <= "000";
-                        st <= x"4";
-                    when others =>
-                        dram_command <= NOP;
-                end case;
-            else
+            if waiting = '1' then
                 dram_command <= NOP;
+                wait_counter <= std_logic_vector(unsigned(wait_counter) - 1);
+                if wait_counter = x"00000" then
+                    waiting <= '0';
+                end if;
+            else
+                if dram_ready = '1' and dram_busy = '0' then
+                    case st is
+                        when x"0" =>
+                            dram_command <= ACT;
+                            dram_addr <= "00000000000000";
+                            dram_ba <= "000";
+                            st <= x"1";
+                        when x"1" =>
+                            dram_command <= WRITE;
+                            dram_addr <= "00000000000000";
+                            dram_ba <= "000";
+                            dram_in <= x"deadcafebeefcafe";
+                            st <= x"2";
+                        when x"2" =>
+                            dram_command <= WRITE;
+                            dram_addr <= "00000000000100";
+                            dram_ba <= "000";
+                            dram_in <= x"0123456789abcdef";
+                            st <= x"3";
+                            wait_counter <= x"0ff00";
+                            waiting <= '1';
+                        when x"3" =>
+                            dram_command <= ACT;
+                            dram_addr <= "00000000000000";
+                            dram_ba <= "000";
+                            st <= x"4";
+                        when x"4" =>
+                            dram_command <= READ;
+                            dram_addr <= "00000000000100";
+                            dram_ba <= "000";
+                            st <= x"5";
+                        when others =>
+                            dram_command <= NOP;
+                    end case;
+                else
+                    dram_command <= NOP;
+                end if;
             end if;
 
 --            if dram_ready = '1' and sender_busy = '0' then

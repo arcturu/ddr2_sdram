@@ -43,6 +43,7 @@ architecture struct of DRAM_CONTROLLER is
     constant CTR_WRITE : std_logic_vector (3 downto 0) := "0001";
     constant CTR_READ  : std_logic_vector (3 downto 0) := "0010";
     constant CTR_ACT   : std_logic_vector (3 downto 0) := "0011";
+    constant CTR_REF   : std_logic_vector (3 downto 0) := "0100";
     signal st : std_logic_vector (4 downto 0) := "00000";
     signal dram_ready : std_logic := '0';
     signal dram_init_waiting : std_logic := '0';
@@ -59,6 +60,9 @@ architecture struct of DRAM_CONTROLLER is
     signal dqs_counter : std_logic_vector (15 downto 0) := x"0000";
     type t_dqbuf is array (3 downto 0) of std_logic_vector (63 downto 0);
     signal dqbuf : t_dqbuf := (others => (others => '0'));
+    signal refresh_counter_go : std_logic := '0';
+    signal refresh_counter : std_logic_vector (11 downto 0) := x"000";
+    signal refresh_go : std_logic := '0';
 begin
 
     ready <= dram_ready;
@@ -100,11 +104,12 @@ begin
     DQ <= in_buf when dq_z = '0' else (others => 'Z');
 
     -- FIXME just for debugging
-    dout(15 downto 0) <= dqbuf(0)(15 downto 0);
-    dout(31 downto 16) <= dqbuf(1)(15 downto 0);
-    dout(47 downto 32) <= dqbuf(2)(15 downto 0);
---    dout(63 downto 48) <= dqbuf(3)(15 downto 0);
-    dout(63 downto 48) <= dqs_counter;
+--    dout(15 downto 0) <= dqbuf(0)(15 downto 0);
+--    dout(31 downto 16) <= dqbuf(1)(15 downto 0);
+--    dout(47 downto 32) <= dqbuf(2)(15 downto 0);
+----    dout(63 downto 48) <= dqbuf(3)(15 downto 0);
+--    dout(63 downto 48) <= dqs_counter;
+    dout <= dqbuf(0);
 
     process (clkh)
     begin
@@ -150,6 +155,9 @@ begin
     dram_init : process (clk)
     begin
         if falling_edge(clk) then
+            if refresh_counter_go = '1' then
+                refresh_counter <= std_logic_vector(unsigneD(refresh_counter) + 1);
+            end if;
             if dram_init_waiting = '1' then
                 command <= NOP;
                 counter <= std_logic_vector(unsigned(counter) - 1);
@@ -170,12 +178,12 @@ begin
                     when "00001" => -- clock enable and issue nop
                         CKE <= "11";
                         command <= NOP;
-                        counter <= x"00ff";
+                        counter <= x"00ff"; -- FIXME
                         dram_init_waiting <= '1';
                     when "00010" => -- issue PALL
                         command <= PALL;
                         A(10) <= '1';
-                        counter <= x"00ff";
+                        counter <= x"00ff"; -- FIXME
                         dram_init_waiting <= '1';
                     when "00011" => -- init EMR(2)
                         command <= MR;
@@ -204,50 +212,59 @@ begin
                     when "00111" => -- precharge all
                         command <= PALL;
                         A(10) <= '1';
-                        counter <= x"00ff";
+                        counter <= x"00ff"; -- FIXME
                         dram_init_waiting <= '1';
                     when "01000" => -- auto reflesh 2 times
                         command <= REF;
-                        counter <= x"00ff";
+                        counter <= x"00ff"; -- FIXME
                         dram_init_waiting <= '1';
                     when "01001" => -- auto reflesh 2 times
                         command <= REF;
-                        counter <= x"00ff";
+                        counter <= x"00ff"; -- FIXME
                         dram_init_waiting <= '1';
                     when "01010" => -- set mode register
                         command <= MR;
                         BA <= "000";
                         A <= "00100001010010";
-                        counter <= x"00C8";
+                        counter <= x"00C8"; -- FIXME
                         dram_init_waiting <= '1';
                     when "01011" => -- set OCD default
                         command <= MR;
                         BA <= "001";
                         A <= "00001110000000";
-                        counter <= x"00C8";
+                        counter <= x"00C8"; -- FIXME
                         dram_init_waiting <= '1';
                     when "01100" => -- OCD exit
                         command <= MR;
                         BA <= "001";
                         A <= (others => '0');
-                        counter <= x"00ff";
+                        counter <= x"00ff"; -- FIXME
                         dram_init_waiting <= '1';
                     when "01101" => -- ready
+                        refresh_counter_go <= '1';
                         command <= NOP;
                         dram_ready <= '1';
-                        case cmd is
-                            when CTR_WRITE =>
-                                st <= "01110"; -- DRAM_WRITE;
-                                busy <= '1';
-                            when CTR_READ =>
-                                st <= "10011"; -- DRAM_READ;
-                                busy <= '1';
-                            when CTR_ACT =>
-                                st <= "10101";
-                                busy <= '1';
-                            when others =>
-                                busy <= '0';
-                        end case;
+                        if unsigned(refresh_counter) > x"800" then -- 2048 clks (7168 ns < 7825)
+                            st <= "10111"; -- DRAM_REFRESH
+                            busy <= '1';
+                        else
+                            case cmd is
+                                when CTR_WRITE =>
+                                    st <= "01110"; -- DRAM_WRITE;
+                                    busy <= '1';
+                                when CTR_READ =>
+                                    st <= "10011"; -- DRAM_READ;
+                                    busy <= '1';
+                                when CTR_ACT =>
+                                    st <= "10101";
+                                    busy <= '1';
+                                when CTR_REF =>
+                                    st <= "10111";
+                                    busy <= '1';
+                                when others =>
+                                    busy <= '0';
+                            end case;
+                        end if;
                     when "01110" => -- DRAM_WRITE =>
                         command <= WRITE;
                         BA <= bank_addr;
@@ -296,6 +313,19 @@ begin
                         counter <= x"000f";
                         dram_init_waiting <= '1';
                     when "10110" =>
+                        st <= "01101";
+                        busy <= '0';
+                    when "10111" => -- refresh
+                        refresh_counter <= (others => '0');
+                        command <= PALL;
+                        A(10) <= '1';
+                        counter <= x"00ff"; -- FIXME
+                        dram_init_waiting <= '1';
+                    when "11000" =>
+                        command <= REF;
+                        counter <= x"00ff"; -- FIXME
+                        dram_init_waiting <= '1';
+                    when "11001" =>
                         st <= "01101";
                         busy <= '0';
                     when others => -- ??
